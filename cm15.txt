@@ -1,0 +1,21 @@
+"cm15"
+{
+	"base"        "base"
+	"title"       "CM15"
+	"maps"        "^gm_|^gmod_|^phys_"
+	"menusystem"  "1"
+	
+	// Required Workshop Addons
+	"1"
+	{
+		"workshopid" "3491940716"  // Aliens: Fireteam Elite SNPCs
+	}
+	"2"
+	{
+		"workshopid" "131759821"   // VJ Base
+	}
+	"3"
+	{
+		"workshopid" "3050482313"  // Alien Isolation SNPCs Content
+	}
+}

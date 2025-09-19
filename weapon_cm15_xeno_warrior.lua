@@ -48,6 +48,12 @@ SWEP.ChargeLevel = 0
 SWEP.QuickTapTime = 0.15
 
 
+-- Sound cooldown tracking
+SWEP.LastTauntSound = 0
+SWEP.LastTailSound = 0
+SWEP.TauntCooldown = 8  -- 8 seconds between taunts
+SWEP.TailSoundCooldown = 8  -- 8 seconds between tail sounds
+
 -- Taunt sounds for normal claw attacks
 SWEP.SoundTbl_Attack = {
     "cpthazama/avp/xeno/alien/vocals/aln_taunt_02.ogg",
@@ -111,7 +117,13 @@ function SWEP:Initialize()
     self.IsCharging = false
     self.AttackEndTime = 0
     
+
+
+
+
     if CLIENT then
+
+
         -- Initialize HUD materials
         self.matHud = Material("hud/cpthazama/avp/alien_hud.png", "smooth additive")
         self.matHP = Material("hud/cpthazama/avp/avp_a_health_bar_new.png", "smooth additive")
@@ -535,8 +547,10 @@ function SWEP:PrimaryAttack()
     owner:SetCycle(0)
     owner:SetPlaybackRate(2.0)
     
-    if self.SwingCount % 3 == 0 then
+    -- Play taunt sound with cooldown
+    if CurTime() > self.LastTauntSound + self.TauntCooldown then
         self:PlayXenoSound(self.SoundTbl_Attack, 75)
+        self.LastTauntSound = CurTime()
     end
     
     if SERVER then
@@ -623,7 +637,11 @@ function SWEP:DoQuickTailStab()
     owner:SetCycle(0)
     owner:SetPlaybackRate(2.5)  -- Even faster for quick stab
     
-    self:PlayXenoSound(self.SoundTbl_TailMiss, 75, 140)
+        -- Play tail attack sound with cooldown
+    if CurTime() > self.LastTailSound + self.TailSoundCooldown then
+        self:PlayXenoSound(self.SoundTbl_Attack, 80)
+        self.LastTailSound = CurTime()
+    end
     
     if SERVER then
         timer.Simple(0.08, function()  -- Very quick damage
@@ -816,7 +834,11 @@ function SWEP:FinishChargeAttack()
     owner:SetCycle(0)
     owner:SetPlaybackRate(2.0)  -- Faster playback rate
     
-    self:PlayXenoSound(self.SoundTbl_Attack, 80)
+        -- Play tail attack sound with cooldown
+    if CurTime() > self.LastTailSound + self.TailSoundCooldown then
+        self:PlayXenoSound(self.SoundTbl_Attack, 80)
+        self.LastTailSound = CurTime()
+    end
     
     if SERVER then
         local damageDelay = attackDuration * 0.3  -- Earlier damage timing
@@ -998,6 +1020,16 @@ end
 
 -- CLIENT HUD
 if CLIENT then
+        -- Hide default GMod HUD elements for xenomorphs
+    hook.Add("HUDShouldDraw", "CM15_HideDefaultHUD", function(name)
+        local ply = LocalPlayer()
+        if IsValid(ply) and ply:GetNWBool("IsDirectXeno", false) then  -- Added IsValid check
+            if name == "CHudHealth" or name == "CHudBattery" or name == "CHudAmmo" then
+                return false
+            end
+        end
+    end)
+
     local function ScreenPos(x, y)
         local w, h = ScrW(), ScrH()
         return {
@@ -1013,6 +1045,11 @@ if CLIENT then
             y = w * y * 0.01
         }
     end
+
+
+    
+
+
 
     function SWEP:DrawHUD()
         local owner = LocalPlayer()
@@ -1147,6 +1184,8 @@ if CLIENT then
         surface.SetDrawColor(hpColor.r, hpColor.g, hpColor.b, 200)
         surface.DrawLine(centerX - 10, centerY, centerX + 10, centerY)
         surface.DrawLine(centerX, centerY - 10, centerX, centerY + 10)
+
+
     end
 end
 
@@ -1187,8 +1226,14 @@ function SWEP:OnRemove()
             owner:SetNWInt("ForceSequence", 0)
             owner:SetNWFloat("ForceSequenceEnd", 0)
         end
+        if CLIENT then
+            hook.Remove("HUDShouldDraw", "CM15_HideDefaultHUD")
+        end
+    
+
     end
 end
+
 
 -- Server-side movement hook
 if SERVER then

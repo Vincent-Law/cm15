@@ -54,6 +54,54 @@ SWEP.LastTailSound = 0
 SWEP.TauntCooldown = 8  -- 8 seconds between taunts
 SWEP.TailSoundCooldown = 8  -- 8 seconds between tail sounds
 
+
+
+-- Additional vocal sounds
+SWEP.SoundTbl_Growl = {
+    "cpthazama/avp/xeno/alien/vocals/alien_growl_short_01.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_growl_short_02.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_growl_short_03.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_growl_short_04.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_growl_short_05.ogg",
+}
+
+SWEP.SoundTbl_Hiss = {
+    "cpthazama/avp/xeno/alien/vocals/alien_hiss_long_01.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_hiss_long_02.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_hiss_short_01.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_hiss_short_02.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_hiss_scream_long_01.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_hiss_scream_long_02.ogg",
+}
+
+SWEP.SoundTbl_Pain = {
+    "cpthazama/avp/xeno/alien/vocals/aln_pain_small_01.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_pain_small_02.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_pain_small_03.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_pain_small_04.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_pain_small_05.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_pain_small_06.ogg",
+}
+
+SWEP.SoundTbl_DeathScream = {
+    "cpthazama/avp/xeno/alien/vocals/aln_death_scream_20.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_death_scream_21.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_death_scream_22.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_death_scream_23.ogg",
+    "cpthazama/avp/xeno/alien/vocals/aln_death_scream_24.ogg",
+}
+
+SWEP.SoundTbl_Spotted = {
+    "cpthazama/avp/xeno/alien/vocals/alien_spotted_01.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_spotted_02.ogg",
+}
+
+SWEP.SoundTbl_CallScream = {
+    "cpthazama/avp/xeno/alien/vocals/alien_call_scream_01.ogg",
+    "cpthazama/avp/xeno/alien/vocals/alien_call_scream_02.ogg",
+}
+
+
 -- Taunt sounds for normal claw attacks
 SWEP.SoundTbl_Attack = {
     "cpthazama/avp/xeno/alien/vocals/aln_taunt_02.ogg",
@@ -63,6 +111,43 @@ SWEP.SoundTbl_Attack = {
     "cpthazama/avp/xeno/alien/vocals/aln_taunt_10.ogg",
     "cpthazama/avp/xeno/alien/vocals/aln_taunt_12.ogg",
 }
+
+
+-- Tail movement sounds
+SWEP.SoundTbl_TailMove = {
+    "cpthazama/avp/xeno/alien/bodymove/alien_tail_move_01.ogg",
+    "cpthazama/avp/xeno/alien/bodymove/alien_tail_move_02.ogg",
+    "cpthazama/avp/xeno/alien/bodymove/alien_tail_move_03.ogg",
+}
+
+-- Footstep sounds for different surfaces
+SWEP.SoundTbl_FootstepsDirt = {
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_dirt_walk_01.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_dirt_walk_02.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_dirt_walk_03.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_dirt_walk_04.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_dirt_walk_05.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_dirt_walk_06.ogg",
+}
+
+SWEP.SoundTbl_FootstepsMetal = {
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_metal_walk_01.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_metal_walk_02.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_metal_walk_03.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_metal_walk_04.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_metal_walk_05.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_metal_walk_06.ogg",
+}
+
+SWEP.SoundTbl_FootstepsStone = {
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_stone_walk_01.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_stone_walk_02.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_stone_walk_03.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_stone_walk_04.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_stone_walk_05.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/new_oct_09/fs_alien_stone_walk_06.ogg",
+}
+
 
 -- Jump grunts for jumping attacks (future use)
 SWEP.SoundTbl_JumpAttack = {
@@ -117,9 +202,6 @@ function SWEP:Initialize()
     self.IsCharging = false
     self.AttackEndTime = 0
     
-
-
-
 
     if CLIENT then
 
@@ -414,6 +496,7 @@ function SWEP:SetupMove(ply, mv, cmd)
                 end
                 
                 if forward > 10 then
+                    self:PlayXenoSound(self.SoundTbl_Jump, 70, math.random(95, 105))
                     if sprinting and ply:GetVelocity():Length2D() > 300 then
                         mv:SetUpSpeed(400)
                         local vel = mv:GetVelocity()
@@ -425,6 +508,7 @@ function SWEP:SetupMove(ply, mv, cmd)
                     end
                 elseif math.abs(forward) < 10 and math.abs(side) < 10 then
                     mv:SetUpSpeed(300)
+                    self:PlayXenoSound(self.SoundTbl_Jump, 70, math.random(95, 105))
                 else
                     mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
                     if SERVER then
@@ -686,6 +770,12 @@ function SWEP:DoCrawlingSecondaryAttack()
                 self:PlayXenoSound(self.SoundTbl_TailHit, 75)
             end
         end)
+    end
+end
+
+function SWEP:OnPlayerHurt()
+    if math.random(1, 3) == 1 then -- 33% chance
+        self:PlayXenoSound(self.SoundTbl_Pain, 75, math.random(90, 110))
     end
 end
 
@@ -1046,6 +1136,12 @@ if CLIENT then
         }
     end
 
+        hook.Add("PlayerFootstep", "CM15_DisableDefaultFootsteps", function(ply, pos, foot, sound, volume, rf)
+        if ply:GetNWBool("IsDirectXeno", false) then
+            return true  -- Prevent default footstep sound
+        end
+    end)
+    
 
     
 
@@ -1192,6 +1288,32 @@ end
 function SWEP:Reload()
 end
 
+function SWEP:PlayFootstepSound()
+    local owner = self:GetOwner()
+    if not IsValid(owner) then return end
+    
+    -- Trace down to get surface material
+    local tr = util.TraceLine({
+        start = owner:GetPos(),
+        endpos = owner:GetPos() + Vector(0, 0, -50),
+        filter = owner
+    })
+    
+    if tr.Hit then
+        local matType = tr.MatType
+        local volume = self.IsCrawling and 35 or 45  -- Quieter when crawling
+        
+        if matType == MAT_METAL or matType == MAT_VENT or matType == MAT_COMPUTER then
+            self:PlayXenoSound(self.SoundTbl_FootstepsMetal, volume, math.random(90, 110))
+        elseif matType == MAT_CONCRETE or matType == MAT_TILE then
+            self:PlayXenoSound(self.SoundTbl_FootstepsStone, volume, math.random(90, 110))
+        else
+            self:PlayXenoSound(self.SoundTbl_FootstepsDirt, volume, math.random(90, 110))
+        end
+    end
+end
+
+
 function SWEP:Holster()
     if SERVER then
         local owner = self:GetOwner()
@@ -1228,12 +1350,114 @@ function SWEP:OnRemove()
         end
         if CLIENT then
             hook.Remove("HUDShouldDraw", "CM15_HideDefaultHUD")
+            hook.Remove("PlayerFootstep", "CM15_DisableDefaultFootsteps")
         end
     
 
     end
 end
 
+-- Footstep timing variables
+SWEP.LastFootstep = 0
+SWEP.FootstepDelay = 0.4  -- Time between footsteps
+
+function SWEP:Think()
+    local owner = self:GetOwner()
+    if not IsValid(owner) then return end
+    
+    if SERVER then
+        -- Clear forced attack sequences after they expire
+        local forceEnd = owner:GetNWFloat("ForceSequenceEnd", 0)
+        if forceEnd > 0 and CurTime() >= forceEnd then
+            owner:SetNWInt("ForceSequence", 0)
+            owner:SetNWFloat("ForceSequenceEnd", 0)
+        end
+        
+        -- Handle charge attack
+        if self.IsCharging then
+            if not owner:KeyDown(IN_ATTACK2) then
+                local holdTime = CurTime() - self.ChargeStartTime
+                self:UpdateMovementSpeed()
+                
+                if holdTime <= self.QuickTapTime then
+                    self:DoQuickTailStab()
+                else
+                    self:FinishChargeAttack()
+                end
+            else
+                local chargeTime = CurTime() - self.ChargeStartTime
+                local newLevel = 1
+                
+                if chargeTime >= 1.0 then
+                    newLevel = 3
+                elseif chargeTime >= 0.5 then
+                    newLevel = 2
+                else
+                    newLevel = 1
+                end
+                
+                if newLevel ~= self.ChargeLevel then
+                    self.ChargeLevel = newLevel
+                    if newLevel == 2 then
+                        owner:EmitSound("cpthazama/avp/weapons/alien/spit/aln_pre_spit_attack_01.ogg", 50, 120)
+                    elseif newLevel == 3 then
+                        owner:EmitSound("cpthazama/avp/weapons/alien/spit/aln_pre_spit_attack_02.ogg", 60, 100)
+                    end
+                end
+            end
+        end
+        
+        -- Handle attack state cleanup - SHORTENED TIMING
+        if self.IsAttacking and CurTime() >= self.AttackEndTime then
+            self.IsAttacking = false
+            self.AttackEndTime = 0
+            self:UpdateMovementSpeed() -- Restore movement immediately
+        end
+        
+        -- Handle crawl toggle
+        if owner:KeyPressed(IN_DUCK) and CurTime() > self.NextCrawlToggle then
+            self:ToggleCrawlMode()
+        end
+        
+        -- Update movement speeds
+        if not self.IsAttacking and not self.IsCharging then
+            self:UpdateMovementSpeed()
+        end
+        
+        -- Handle crawl sprint buildup
+        if self.IsCrawling and not self.IsAttacking and not self.IsCharging then
+            self:HandleCrawlSprint()
+        end
+        self:HandleFootsteps()
+    end
+end
+
+
+-- Add this new function:
+function SWEP:HandleFootsteps()
+    local owner = self:GetOwner()
+    if not IsValid(owner) then return end
+    
+    -- Only play footsteps when moving and on ground
+    local velocity = owner:GetVelocity():Length2D()
+    local onGround = owner:OnGround()
+    
+    if velocity > 50 and onGround and CurTime() > self.LastFootstep + self.FootstepDelay then
+        -- Adjust footstep timing based on movement speed
+        local speedMultiplier = 1.0
+        if self.IsCrawling then
+            speedMultiplier = 1.5  -- Slower footsteps when crawling
+        elseif owner:KeyDown(IN_SPEED) then
+            speedMultiplier = 0.7  -- Faster footsteps when sprinting
+        end
+        
+        self.FootstepDelay = 0.4 * speedMultiplier
+        self.LastFootstep = CurTime()
+        
+        -- Play footstep sound
+        self:PlayFootstepSound()
+    end
+end
 
 -- Server-side movement hook
 if SERVER then

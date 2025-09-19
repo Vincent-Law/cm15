@@ -45,17 +45,7 @@ hook.Add("Think", "CM15_XenoDirectAnimationControl", function()
             continue
         end
         
-        -- Check if in an existing attack animation that needs to finish
-        local isInAttackAnim = (currentSeq >= 70 and currentSeq <= 98) or -- various attack sequences
-                              (currentSeq == 312) or -- tail_stab
-                              (currentSeq >= 81 and currentSeq <= 92) or -- claw attacks
-                              (currentSeq >= 228 and currentSeq <= 243) -- other attacks
-        if isInAttackAnim and currentCycle < 0.8 then
-            -- Let attack animation finish, update tracking
-            lastSetSequence[steamID] = currentSeq
-            lastCycle[steamID] = currentCycle
-            continue
-        end
+
         
 
         
@@ -117,88 +107,48 @@ hook.Add("Think", "CM15_XenoDirectAnimationControl", function()
                     continue
                 end
             end
-        -- Crawling mode animations
-        elseif isCrawling then
-            if anyMovementKeys then
-                -- Crawl sprint animations - check weapon for speed buildup
-                local weapon = ply:GetActiveWeapon()
-                local hasSpeedBuildup = IsValid(weapon) and weapon.CrawlSpeedBuildup and weapon.CrawlSpeedBuildup > 0.5
-                
-                if shift then
-                    -- Check if moving forward for fast crawl
-                    if isPureForward and hasSpeedBuildup then
-                        -- Fast crawl (max speed forward)
-                        targetSeq = 93  -- crawl_fast
-                        seqName = "crawl_fast"
+                    -- Crawling mode animations
+            elseif isCrawling then
+                if anyMovementKeys then
+                    if shift and isPureForward then
+                            targetSeq = 93  -- crawl_fast
+                            seqName = "crawl_fast"
                     else
-                        -- Sprint crawl in other directions - use sneak animations at higher speed
+                        -- All other crawl movements use normal sneak animations (no sprint versions)
                         if isPureLeft then
                             targetSeq = 363  -- sneak_left
-                            seqName = "sneak_left_sprint"
+                            seqName = "sneak_left"
                         elseif isPureRight then
                             targetSeq = 364  -- sneak_right
-                            seqName = "sneak_right_sprint"
+                            seqName = "sneak_right"
                         elseif isPureBack then
                             targetSeq = 362  -- sneak_backward
-                            seqName = "sneak_backward_sprint"
-                        elseif isPureForward then
+                            seqName = "sneak_backward"
+                        elseif isPureForward and not shift then
                             targetSeq = 361  -- sneak_forward
-                            seqName = "sneak_forward_sprint"
+                            seqName = "sneak_forward"
                         elseif isForwardLeft then
                             targetSeq = 365  -- sneak_forward_left
-                            seqName = "sneak_forward_left_sprint"
+                            seqName = "sneak_forward_left"
                         elseif isForwardRight then
                             targetSeq = 366  -- sneak_forward_right
-                            seqName = "sneak_forward_right_sprint"
+                            seqName = "sneak_forward_right"
                         elseif isBackLeft then
                             targetSeq = 367  -- sneak_backward_left
-                            seqName = "sneak_backward_left_sprint"
+                            seqName = "sneak_backward_left"
                         elseif isBackRight then
                             targetSeq = 368  -- sneak_backward_right
-                            seqName = "sneak_backward_right_sprint"
+                            seqName = "sneak_backward_right"
                         else
-                            -- Fallback to forward sneak
-                            targetSeq = 361  -- sneak_forward
-                            seqName = "sneak_forward_sprint"
+                            targetSeq = 361  -- sneak_forward fallback
+                            seqName = "sneak_forward"
                         end
                     end
                 else
-                    -- Normal crawl movement - use sneak animations
-                    if isPureLeft then
-                        targetSeq = 363  -- sneak_left
-                        seqName = "sneak_left"
-                    elseif isPureRight then
-                        targetSeq = 364  -- sneak_right
-                        seqName = "sneak_right"
-                    elseif isPureBack then
-                        targetSeq = 362  -- sneak_backward
-                        seqName = "sneak_backward"
-                    elseif isPureForward then
-                        targetSeq = 361  -- sneak_forward
-                        seqName = "sneak_forward"
-                    elseif isForwardLeft then
-                        targetSeq = 365  -- sneak_forward_left
-                        seqName = "sneak_forward_left"
-                    elseif isForwardRight then
-                        targetSeq = 366  -- sneak_forward_right
-                        seqName = "sneak_forward_right"
-                    elseif isBackLeft then
-                        targetSeq = 367  -- sneak_backward_left
-                        seqName = "sneak_backward_left"
-                    elseif isBackRight then
-                        targetSeq = 368  -- sneak_backward_right
-                        seqName = "sneak_backward_right"
-                    else
-                        -- Fallback to forward sneak
-                        targetSeq = 361  -- sneak_forward
-                        seqName = "sneak_forward"
-                    end
+                    -- Crawl idle
+                    targetSeq = 10  -- idle
+                    seqName = "crawl_idle"
                 end
-            else
-                -- Crawl idle
-                targetSeq = 10  -- idle
-                seqName = "crawl_idle"
-            end
         -- Standing mode animations
         elseif anyMovementKeys then
             -- Sprinting (Shift held)

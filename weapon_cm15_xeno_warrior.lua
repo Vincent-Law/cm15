@@ -31,6 +31,9 @@ SWEP.DrawAmmo = false
 SWEP.DrawCrosshair = false
 SWEP.UseHands = false
 
+-- Add to SWEP init:
+SWEP.LastHealthQuarter = 4
+
 -- Warrior specific variables
 SWEP.IsCrawling = false
 SWEP.NextCrawlToggle = 0
@@ -41,18 +44,39 @@ SWEP.NextAttack = 0
 SWEP.IsAttacking = false
 SWEP.AttackEndTime = 0
 
+-- Add to SWEP init:
+SWEP.LastSprintSound = 0
+SWEP.SprintSoundCooldown = 10
+
 -- NEW Charge attack variables
 SWEP.IsCharging = false
 SWEP.ChargeStartTime = 0
 SWEP.ChargeLevel = 0
 SWEP.QuickTapTime = 0.15
 
+-- Add to SWEP initialization variables
+SWEP.NextDodge = 0        -- 3 second cooldown for any dodge
+SWEP.NextJumpTime = 0     -- 3 second cooldown for any jump
+SWEP.NextTailAttack = 0   -- 10 second cooldown for standing tail
+
+-- Add these variables to SWEP init:
+SWEP.NextBreathSound = 0
+SWEP.BreathSoundInterval = 8  -- Breathing every 8 seconds
 
 -- Sound cooldown tracking
 SWEP.LastTauntSound = 0
 SWEP.LastTailSound = 0
 SWEP.TauntCooldown = 8  -- 8 seconds between taunts
 SWEP.TailSoundCooldown = 8  -- 8 seconds between tail sounds
+
+-- Add these variables to SWEP initialization
+SWEP.WasInAir = false
+SWEP.FootstepsDisabledUntil = 0
+
+-- Add these to your variable declarations
+SWEP.VisionMode = 0  -- 0 = off, 1 = normal vision, 2 = six vision, 3 = grid vision
+SWEP.NextVisionToggle = 0
+SWEP.VisionSound = nil
 
 
 
@@ -101,6 +125,12 @@ SWEP.SoundTbl_CallScream = {
     "cpthazama/avp/xeno/alien/vocals/alien_call_scream_02.ogg",
 }
 
+-- Add to your sound tables (near line 60)
+SWEP.SoundTbl_Land = {
+    "cpthazama/avp/xeno/alien/footsteps/land/alien_land_stone_10.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/land/alien_land_stone_11.ogg",
+    "cpthazama/avp/xeno/alien/footsteps/land/alien_land_stone_12.ogg",
+}
 
 -- Taunt sounds for normal claw attacks
 SWEP.SoundTbl_Attack = {
@@ -202,10 +232,44 @@ function SWEP:Initialize()
     self.IsCharging = false
     self.AttackEndTime = 0
     
+    -- Initialize variables for sounds
+    self.LastHealthQuarter = 4
+    self.LastCombatIdle = 0
+    self.CombatIdleInterval = 30
+    
+    if SERVER then
+        -- Pain sound hook
+        local weapon = self
+        hook.Add("EntityTakeDamage", "XenoWarriorPain_" .. self:EntIndex(), function(target, dmginfo)
+            if target == weapon:GetOwner() and IsValid(weapon) then
+                local health = target:Health()
+                local maxHealth = target:GetMaxHealth()
+                local currentQuarter = math.ceil((health / maxHealth) * 4)
+                
+                if currentQuarter < weapon.LastHealthQuarter then
+                    local painSound = "cpthazama/avp/xeno/alien/vocals/aln_pain_small_" .. string.format("%02d", math.random(1, 10)) .. ".ogg"
+                    target:EmitSound(painSound, 75, math.random(90, 110))
+                    weapon.LastHealthQuarter = currentQuarter
+                end
+            end
+        end)
+        
+        -- Death sound hook
+        hook.Add("PlayerDeath", "XenoWarriorDeath_" .. self:EntIndex(), function(victim)
+            if victim == weapon:GetOwner() and IsValid(weapon) then
+                -- Play both death sounds
+                victim:EmitSound("cpthazama/avp/xeno/alien/vocals/alien_death_scream_iconic_elephant.ogg", 85, 100)
+                timer.Simple(0.1, function()
+                    if IsValid(victim) then
+                        local deathSound = "cpthazama/avp/xeno/alien/vocals/aln_death_scream_" .. math.random(20, 27) .. ".ogg"
+                        victim:EmitSound(deathSound, 80, 100)
+                    end
+                end)
+            end
+        end)
+    end
 
     if CLIENT then
-
-
         -- Initialize HUD materials
         self.matHud = Material("hud/cpthazama/avp/alien_hud.png", "smooth additive")
         self.matHP = Material("hud/cpthazama/avp/avp_a_health_bar_new.png", "smooth additive")
@@ -227,6 +291,79 @@ function SWEP:Initialize()
         
         self.HPLerp = 0
         self.HPColor = Vector(191, 255, 127)
+    end
+end
+
+if CLIENT then
+    -- Vision color modification tables
+    local tab_xeno = {
+        ["$pp_colour_addr"] = 0.65,
+        ["$pp_colour_addg"] = 0.03,
+        ["$pp_colour_addb"] = 0,
+        ["$pp_colour_brightness"] = 0.2,
+        ["$pp_colour_contrast"] = 1,
+        ["$pp_colour_colour"] = 1,
+        ["$pp_colour_mulr"] = 0,
+        ["$pp_colour_mulg"] = 0,
+        ["$pp_colour_mulb"] = 0,
+        ["$pp_colour_inv"] = 1,
+    }
+    
+    -- Hook for screen effects
+    hook.Add("RenderScreenspaceEffects", "XenoWarriorVision", function()
+        local wep = LocalPlayer():GetActiveWeapon()
+        if IsValid(wep) and wep:GetClass() == "weapon_cm15_xeno_warrior" and wep.VisionMode > 0 then
+            DrawColorModify(tab_xeno)
+        end
+    end)
+    
+    -- Hook for entity halos
+    hook.Add("PreDrawHalos", "XenoWarriorHalos", function()
+        local wep = LocalPlayer():GetActiveWeapon()
+        if IsValid(wep) and wep:GetClass() == "weapon_cm15_xeno_warrior" and wep.VisionMode > 0 then
+            wep:DrawVisionHalos()
+        end
+    end)
+    
+    -- Add method for drawing halos
+    function SWEP:DrawVisionHalos()
+        local owner = self:GetOwner()
+        if not IsValid(owner) then return end
+        
+        local alienEnts = {}
+        local humanEnts = {}
+        
+        -- Categorize players by team
+        for _, ply in ipairs(player.GetAll()) do
+            if IsValid(ply) and ply != owner and ply:Alive() then
+                local dist = ply:GetPos():Distance(owner:GetPos())
+                if dist < 3000 then  -- Vision range
+                    if ply:Team() == TEAM_ALIENS then
+                        table.insert(alienEnts, ply)
+                    elseif ply:Team() == TEAM_HUMANS then
+                        table.insert(humanEnts, ply)
+                    end
+                end
+            end
+        end
+        
+        -- Add NPCs if they exist
+        for _, npc in ipairs(ents.FindByClass("npc_vj_avp_xeno_*")) do
+            if IsValid(npc) then
+                local dist = npc:GetPos():Distance(owner:GetPos())
+                if dist < 3000 then
+                    table.insert(alienEnts, npc)
+                end
+            end
+        end
+        
+        -- Draw halos
+        if #alienEnts > 0 then
+            halo.Add(alienEnts, Color(203, 120, 120), 10, 10, 15, true, true)  -- Red-ish for aliens
+        end
+        if #humanEnts > 0 then
+            halo.Add(humanEnts, Color(0, 170, 255), 10, 10, 15, true, true)  -- Blue for humans
+        end
     end
 end
 
@@ -253,13 +390,37 @@ end
 
 function SWEP:SetupDataTables()
     self:NetworkVar("Bool", 0, "CrawlingMode")
+    -- We'll use SetNWFloat instead of NetworkVar for the tail attack
 end
 
 function SWEP:Think()
     local owner = self:GetOwner()
     if not IsValid(owner) then return end
     
+    
     if SERVER then
+        -- Track if any sound was played this frame
+        local soundPlayed = false
+        
+        -- Enhanced landing detection - check every frame
+        if not owner:OnGround() then
+            if not self.WasInAir then
+                self.WasInAir = true
+                self.LastAirTime = CurTime()
+            end
+        elseif self.WasInAir and owner:OnGround() then
+            -- Just landed - play landing sound if not already handled
+            if not self.JumpLandingHandled then
+                local airTime = CurTime() - (self.LastAirTime or 0)
+                if airTime > 0.1 then
+                    self:PlayXenoSound(self.SoundTbl_Land, 75, math.random(90, 110))
+                    soundPlayed = true
+                end
+            end
+            self.WasInAir = false
+            self.LastAirTime = nil
+        end
+        
         -- Clear forced attack sequences after they expire
         local forceEnd = owner:GetNWFloat("ForceSequenceEnd", 0)
         if forceEnd > 0 and CurTime() >= forceEnd then
@@ -282,9 +443,10 @@ function SWEP:Think()
                 local chargeTime = CurTime() - self.ChargeStartTime
                 local newLevel = 1
                 
-                if chargeTime >= 1.0 then
+                -- HALVED charge times
+                if chargeTime >= 0.5 then  -- Was 1.0
                     newLevel = 3
-                elseif chargeTime >= 0.5 then
+                elseif chargeTime >= 0.25 then  -- Was 0.5
                     newLevel = 2
                 else
                     newLevel = 1
@@ -292,27 +454,33 @@ function SWEP:Think()
                 
                 if newLevel ~= self.ChargeLevel then
                     self.ChargeLevel = newLevel
-                    if newLevel == 2 then
+                    if newLevel == 1 then
+                        -- Level 1 reached immediately (no sound needed)
+                    elseif newLevel == 2 then
+                        -- Level 2 at 0.25 seconds
                         owner:EmitSound("cpthazama/avp/weapons/alien/spit/aln_pre_spit_attack_01.ogg", 50, 120)
+                        soundPlayed = true
                     elseif newLevel == 3 then
+                        -- Level 3 at 0.5 seconds
                         owner:EmitSound("cpthazama/avp/weapons/alien/spit/aln_pre_spit_attack_02.ogg", 60, 100)
+                        soundPlayed = true
                     end
                 end
             end
         end
         
-        -- Handle attack state cleanup - SHORTENED TIMING
+        -- Handle attack state cleanup
         if self.IsAttacking and CurTime() >= self.AttackEndTime then
             self.IsAttacking = false
             self.AttackEndTime = 0
-            self:UpdateMovementSpeed() -- Restore movement immediately
+            self:UpdateMovementSpeed()
         end
         
         -- Handle crawl toggle
         if owner:KeyPressed(IN_DUCK) and CurTime() > self.NextCrawlToggle then
             self:ToggleCrawlMode()
         end
-        
+
         -- Update movement speeds
         if not self.IsAttacking and not self.IsCharging then
             self:UpdateMovementSpeed()
@@ -321,6 +489,30 @@ function SWEP:Think()
         -- Handle crawl sprint buildup
         if self.IsCrawling and not self.IsAttacking and not self.IsCharging then
             self:HandleCrawlSprint()
+        end
+        
+        -- Handle footsteps
+        self:HandleFootsteps()
+        
+        -- Check if we're currently in combat or making noise
+        local isActive = self.IsAttacking or self.IsCharging or 
+                        (owner:GetVelocity():Length2D() > 50) or
+                        (CurTime() < self.LastTauntSound + 1) or
+                        (CurTime() < self.LastTailSound + 1) or
+                        (CurTime() < self.LastFootstep + 0.5)
+        
+        -- Combat idle growl (only when standing)
+        if not self.IsCrawling and not isActive and CurTime() > self.LastCombatIdle + self.CombatIdleInterval then
+            local growlSound = "cpthazama/avp/xeno/alien/vocals/alien_growl_short_0" .. math.random(1, 5) .. ".ogg"
+            owner:EmitSound(growlSound, 65, math.random(95, 105))
+            self.LastCombatIdle = CurTime()
+            soundPlayed = true
+        end
+        
+        -- Breathing sound loop - only when idle and no other sounds
+        if not isActive and not soundPlayed and CurTime() > self.NextBreathSound then
+            owner:EmitSound("cpthazama/avp/xeno/alien/vocals/alien_breathing_steady_01.ogg", 35, 100) -- Much quieter (was 50)
+            self.NextBreathSound = CurTime() + self.BreathSoundInterval
         end
     end
 end
@@ -360,33 +552,52 @@ end
 
 function SWEP:HandleCrawlSprint()
     local owner = self:GetOwner()
-    if not owner:KeyDown(IN_SPEED) or owner:GetVelocity():Length2D() <= 10 then
+    
+    local forward = owner:KeyDown(IN_FORWARD)
+    local back = owner:KeyDown(IN_BACK)
+    local left = owner:KeyDown(IN_MOVELEFT)
+    local right = owner:KeyDown(IN_MOVERIGHT)
+    
+    local isForwardOnly = forward and not back and not left and not right
+    
+    if not owner:KeyDown(IN_SPEED) or not isForwardOnly or owner:GetVelocity():Length2D() <= 10 then
         if self.CrawlSpeedBuildup > 0 then
-            self.CrawlSpeedBuildup = math.max(self.CrawlSpeedBuildup - 0.2, 0)
+            self.CrawlSpeedBuildup = 0
             self.BurstPlayed = false
+            owner:SetNWBool("CrawlSprintForward", false)
+            owner:SetNWFloat("CrawlSpeedBuildup", 0)  -- Network it
             self:UpdateMovementSpeed()
         end
         return
     end
     
-    local vel = owner:GetVelocity()
-    local forward = owner:EyeAngles():Forward()
-    forward.z = 0
-    forward:Normalize()
-    vel.z = 0
-    
-    local dot = vel:GetNormalized():Dot(forward)
-    
-    if dot > 0.9 and CurTime() > self.NextSpeedBuild then
-        if self.CrawlSpeedBuildup < 1 then
-            self.CrawlSpeedBuildup = math.min(self.CrawlSpeedBuildup + 0.1, 1)
-            self.NextSpeedBuild = CurTime() + 0.1
-            self:UpdateMovementSpeed()
-        end
-    elseif dot <= 0.9 then
-        if self.CrawlSpeedBuildup > 0 then
-            self.CrawlSpeedBuildup = math.max(self.CrawlSpeedBuildup - 0.3, 0)
-            self.BurstPlayed = false
+    if isForwardOnly then
+        local vel = owner:GetVelocity()
+        local forwardDir = owner:EyeAngles():Forward()
+        forwardDir.z = 0
+        forwardDir:Normalize()
+        vel.z = 0
+        
+        local dot = vel:GetNormalized():Dot(forwardDir)
+        
+        if dot > 0.9 and CurTime() > self.NextSpeedBuild then
+            if self.CrawlSpeedBuildup < 1 then
+                self.CrawlSpeedBuildup = math.min(self.CrawlSpeedBuildup + 0.1, 1)
+                self.NextSpeedBuild = CurTime() + 0.1
+                owner:SetNWFloat("CrawlSpeedBuildup", self.CrawlSpeedBuildup)  -- Network it
+                self:UpdateMovementSpeed()
+            end
+            
+            -- Force sequence 93 when fast crawling
+            if self.CrawlSpeedBuildup > 0.5 then
+                owner:SetNWInt("ForceSequence", 93)
+                owner:SetNWFloat("ForceSequenceEnd", CurTime() + 0.5)
+                owner:SetNWBool("CrawlSprintForward", true)
+            end
+        else
+            self.CrawlSpeedBuildup = 0
+            owner:SetNWBool("CrawlSprintForward", false)
+            owner:SetNWFloat("CrawlSpeedBuildup", 0)
             self:UpdateMovementSpeed()
         end
     end
@@ -397,46 +608,52 @@ function SWEP:UpdateMovementSpeed()
     if not IsValid(owner) then return end
     
     if self.IsCrawling then
-        if owner:KeyDown(IN_SPEED) then
-            local vel = owner:GetVelocity()
-            local forward = owner:EyeAngles():Forward()
-            forward.z = 0
-            forward:Normalize()
-            vel.z = 0
-            
-            local dot = vel:Length2D() > 10 and vel:GetNormalized():Dot(forward) or 0
-            
-            if dot > 0.9 then
-                local baseSpeed = 250
-                local maxSpeed = 490
-                local currentSpeed = baseSpeed + (maxSpeed - baseSpeed) * self.CrawlSpeedBuildup
-                owner:SetWalkSpeed(currentSpeed)
-                owner:SetRunSpeed(currentSpeed)
-            else
-                owner:SetWalkSpeed(188)
-                owner:SetRunSpeed(188)
+        local forward = owner:KeyDown(IN_FORWARD)
+        local back = owner:KeyDown(IN_BACK)
+        local left = owner:KeyDown(IN_MOVELEFT)
+        local right = owner:KeyDown(IN_MOVERIGHT)
+        local isForwardOnly = forward and not back and not left and not right
+        
+        if owner:KeyDown(IN_SPEED) and isForwardOnly then
+            -- Play sprint burst sound if haven't recently
+            if CurTime() > self.LastSprintSound + self.SprintSoundCooldown then
+                local sprintSound = "cpthazama/avp/xeno/alien/footsteps/sprint/alien_sprint_burst_0" .. math.random(1,3) .. ".ogg"
+                owner:EmitSound(sprintSound, 75, 100)
+                self.LastSprintSound = CurTime()
             end
+            
+            local baseSpeed = 300
+            local maxSpeed = 750
+            local currentSpeed = baseSpeed + (maxSpeed - baseSpeed) * self.CrawlSpeedBuildup
+            owner:SetWalkSpeed(currentSpeed)
+            owner:SetRunSpeed(currentSpeed)
         else
             owner:SetWalkSpeed(120)
             owner:SetRunSpeed(120)
         end
     else
-        if owner:KeyDown(IN_SPEED) then
-            local vel = owner:GetVelocity()
-            local forward = owner:EyeAngles():Forward()
-            forward.z = 0
-            forward:Normalize()
-            vel.z = 0
-            
-            local dot = vel:Length2D() > 10 and vel:GetNormalized():Dot(forward) or 0
-            
-            if dot > 0.9 then
-                owner:SetWalkSpeed(400)
-                owner:SetRunSpeed(400)
-            else
-                owner:SetWalkSpeed(200)
-                owner:SetRunSpeed(300)
+        -- Standing mode
+        local forward = owner:KeyDown(IN_FORWARD)
+        local back = owner:KeyDown(IN_BACK)
+        local left = owner:KeyDown(IN_MOVELEFT)
+        local right = owner:KeyDown(IN_MOVERIGHT)
+        
+        local dirCount = 0
+        if forward then dirCount = dirCount + 1 end
+        if back then dirCount = dirCount + 1 end
+        if left then dirCount = dirCount + 1 end
+        if right then dirCount = dirCount + 1 end
+        
+        if owner:KeyDown(IN_SPEED) and dirCount == 1 then
+            -- Play sprint burst sound if haven't recently
+            if CurTime() > self.LastSprintSound + self.SprintSoundCooldown then
+                local sprintSound = "cpthazama/avp/xeno/alien/footsteps/sprint/alien_sprint_burst_0" .. math.random(1,3) .. ".ogg"
+                owner:EmitSound(sprintSound, 75, 100)
+                self.LastSprintSound = CurTime()
             end
+            
+            owner:SetWalkSpeed(400)
+            owner:SetRunSpeed(400)
         else
             owner:SetWalkSpeed(200)
             owner:SetRunSpeed(300)
@@ -444,10 +661,17 @@ function SWEP:UpdateMovementSpeed()
     end
 end
 
+
 function SWEP:SetupMove(ply, mv, cmd)
     if ply ~= self:GetOwner() then return end
     
     if mv:KeyPressed(IN_JUMP) then
+        -- Check jump cooldown
+        if CurTime() < self.NextJumpTime then
+            mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
+            return
+        end
+        
         if self.IsCrawling then
             -- Crawling jump behaviors
             local forward = mv:GetForwardSpeed()
@@ -465,11 +689,15 @@ function SWEP:SetupMove(ply, mv, cmd)
             elseif forward > 10 and side < 5 and side > -5 then
                 -- Forward jump while crawling - sequence 206
                 self:DoCrawlingJump(206)
+                self.NextJumpTime = CurTime() + 2  -- Set cooldown
+                ply:SetNWFloat("NextJumpTime", self.NextJumpTime)
                 mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
                 return
             elseif math.abs(forward) < 10 and math.abs(side) < 10 then
                 -- No movement jump while crawling - sequence 203
                 self:DoCrawlingJump(203)
+                self.NextJumpTime = CurTime() + 2  -- Set cooldown
+                ply:SetNWFloat("NextJumpTime", self.NextJumpTime)
                 mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
                 return
             else
@@ -478,7 +706,7 @@ function SWEP:SetupMove(ply, mv, cmd)
                 return
             end
         else
-            -- Standing jump behaviors (existing code)
+            -- Standing jump behaviors
             if ply:OnGround() then
                 local forward = mv:GetForwardSpeed()
                 local side = mv:GetSideSpeed()
@@ -497,6 +725,8 @@ function SWEP:SetupMove(ply, mv, cmd)
                 
                 if forward > 10 then
                     self:PlayXenoSound(self.SoundTbl_Jump, 70, math.random(95, 105))
+                    self.NextJumpTime = CurTime() + 3  -- Set cooldown
+                    ply:SetNWFloat("NextJumpTime", self.NextJumpTime)
                     if sprinting and ply:GetVelocity():Length2D() > 300 then
                         mv:SetUpSpeed(400)
                         local vel = mv:GetVelocity()
@@ -508,6 +738,8 @@ function SWEP:SetupMove(ply, mv, cmd)
                     end
                 elseif math.abs(forward) < 10 and math.abs(side) < 10 then
                     mv:SetUpSpeed(300)
+                    self.NextJumpTime = CurTime() + 3  -- Set cooldown
+                    ply:SetNWFloat("NextJumpTime", self.NextJumpTime)
                     self:PlayXenoSound(self.SoundTbl_Jump, 70, math.random(95, 105))
                 else
                     mv:SetButtons(bit.band(mv:GetButtons(), bit.bnot(IN_JUMP)))
@@ -668,36 +900,35 @@ function SWEP:SecondaryAttack()
 end
 
 
-
-
 function SWEP:StartChargeAttack()
     local owner = self:GetOwner()
     if not IsValid(owner) then return end
     
-    print("[DEBUG] Starting charge attack - blocking movement input")
+    -- Check tail attack cooldown using simple variable
+    if CurTime() < self.NextTailAttack then 
+        owner:ChatPrint("Tail attack on cooldown: " .. string.format("%.1f", self.NextTailAttack - CurTime()) .. "s")
+        return 
+    end
     
     self.IsCharging = true
     self.ChargeStartTime = CurTime()
     self.ChargeLevel = 1
+    self.NextTailAttack = CurTime() + 10  -- Set cooldown
     
-    -- Store original position for reference
+    -- Network the cooldown time to client
+    owner:SetNWFloat("NextTailAttackTime", self.NextTailAttack)
+    
     self.ChargeStartPos = owner:GetPos()
     
-    -- Set walk/run speed to nearly 0 as backup
     owner:SetWalkSpeed(1)
     owner:SetRunSpeed(1)
     
-    -- Start charge animation (sequence 252)
     owner:SetNWInt("ForceSequence", 252)
     owner:SetNWFloat("ForceSequenceEnd", CurTime() + 10)
     
     owner:SetSequence(252)
     owner:SetCycle(0)
     owner:SetPlaybackRate(0.8)
-    
-    print("[DEBUG] Set charge sequence 252, movement blocked")
-    
-    owner:EmitSound("cpthazama/avp/weapons/alien/spit/aln_pre_spit_attack_01.ogg", 60, 150)
 end
 
 function SWEP:DoQuickTailStab()
@@ -720,6 +951,8 @@ function SWEP:DoQuickTailStab()
     owner:SetSequence(attackSeq)
     owner:SetCycle(0)
     owner:SetPlaybackRate(2.5)  -- Even faster for quick stab
+        -- Add tail movement sound here
+    self:PlayXenoSound(self.SoundTbl_TailMove, 65, math.random(95, 105))
     
         -- Play tail attack sound with cooldown
     if CurTime() > self.LastTailSound + self.TailSoundCooldown then
@@ -752,8 +985,8 @@ function SWEP:DoCrawlingSecondaryAttack()
         owner:SetRunSpeed(1)
     end
     
-    owner:SetNWInt("ForceSequence", 203)
-    owner:SetNWFloat("ForceSequenceEnd", CurTime() + 0.35)
+    owner:SetNWInt("ForceSequence", 352)
+    owner:SetNWFloat("ForceSequenceEnd", CurTime() + 1)
     
     owner:SetSequence(314)
     owner:SetCycle(0)
@@ -783,25 +1016,86 @@ function SWEP:DoCrawlingDodge(sequence, direction)
     local owner = self:GetOwner()
     if not IsValid(owner) then return end
     
+    -- Check cooldown
+    if CurTime() < self.NextDodge then return end
     if self.IsAttacking or CurTime() < self.NextAttack then return end
     
     self.IsAttacking = true
     self.AttackEndTime = CurTime() + 0.6
     self.NextAttack = CurTime() + 0.8
+    self.NextDodge = CurTime() + 3  -- 3 second cooldown
+    owner:SetNWFloat("NextDodgeTime", self.NextDodge) 
+    self.FootstepsDisabledUntil = CurTime() + 0.7
     
     owner:SetNWInt("ForceSequence", sequence)
-    owner:SetNWFloat("ForceSequenceEnd", CurTime() + 0.6)
+    owner:SetNWFloat("ForceSequenceEnd", CurTime() + .5)
     
     owner:SetSequence(sequence)
     owner:SetCycle(0)
     owner:SetPlaybackRate(1.5)
     
     if SERVER then
-        timer.Simple(0.25, function()  -- Longer delay
-            if IsValid(owner) then
-                local dodgeVel = owner:GetRight() * (direction == "right" and 1350 or -1350)
-                dodgeVel.z = 50
+        local weapon = self  -- Store reference for timer
+        
+        timer.Simple(0.25, function()
+            if IsValid(owner) and IsValid(weapon) then
+                local dodgeVel = owner:GetRight() * (direction == "right" and 800 or -800)
                 owner:SetVelocity(dodgeVel)
+            end
+        end)
+        
+        timer.Simple(0.45, function()
+            if IsValid(weapon) and IsValid(owner) and owner:OnGround() then
+                weapon:PlayXenoSound(weapon.SoundTbl_Land, 75, math.random(90, 110))
+            end
+        end)
+    end
+end
+
+function SWEP:DoStandingDodge(direction)
+    local owner = self:GetOwner()
+    if not IsValid(owner) then return end
+    
+    -- Check cooldown
+    if CurTime() < self.NextDodge then return end
+    if self.IsAttacking or CurTime() < self.NextAttack then return end
+    
+    self.IsAttacking = true
+    self.AttackEndTime = CurTime() + 0.5
+    self.NextAttack = CurTime() + 0.7
+    self.NextDodge = CurTime() + 3  -- 3 second cooldown
+    owner:SetNWFloat("NextDodgeTime", self.NextDodge) 
+    self.FootstepsDisabledUntil = CurTime() + 0.6
+    
+    local sequence = (direction == "left") and 194 or 195
+    
+    owner:SetNWInt("ForceSequence", sequence)
+    owner:SetNWFloat("ForceSequenceEnd", CurTime() + 0.5)
+    
+    owner:SetSequence(sequence)
+    owner:SetCycle(0)
+    owner:SetPlaybackRate(1.2)
+    
+    if SERVER then
+        -- Store reference to self for timer
+        local weapon = self
+        
+        timer.Simple(0.25, function()
+            if IsValid(owner) and IsValid(weapon) then
+                local dodgeVel = owner:GetRight() * (direction == "right" and 1800 or -1800)
+                dodgeVel.z = 200
+                owner:SetVelocity(dodgeVel)
+                weapon.WasInAir = true
+                weapon.LastAirTime = CurTime()
+                weapon.JumpLandingHandled = true  -- Flag to prevent double sound
+            end
+        end)
+        
+        -- Play landing sound at correct time with fixed self reference
+        timer.Simple(0.45, function()
+            if IsValid(weapon) and IsValid(owner) and owner:OnGround() then
+                weapon:PlayXenoSound(weapon.SoundTbl_Land, 75, math.random(90, 110))
+                weapon.JumpLandingHandled = false  -- Clear flag
             end
         end)
     end
@@ -825,55 +1119,45 @@ function SWEP:DoCrawlingJump(sequence)
     owner:SetPlaybackRate(1.2)
     
     if SERVER then
+        self.JumpLandingHandled = true  -- Flag to prevent Think() from playing sound
+        
         if sequence == 203 then
-            -- No movement hop - more vertical with slight forward momentum, delayed
+            -- No movement hop
             timer.Simple(0.25, function()
                 if IsValid(owner) then
-                    local jumpVel = Vector(0, 0, 500) + owner:GetForward() * 200  -- Add forward momentum
+                    local jumpVel = Vector(0, 0, 500) + owner:GetForward() * 200
                     owner:SetVelocity(jumpVel)
+                    self.WasInAir = true
                 end
             end)
+            -- Landing sound for vertical jump
+            timer.Simple(0.8, function()
+                if IsValid(self) and IsValid(owner) and owner:OnGround() then
+                    self:PlayXenoSound(self.SoundTbl_Land, 75, math.random(90, 110))
+                end
+                self.JumpLandingHandled = false  -- Clear flag
+            end)
         elseif sequence == 206 then
-            -- Forward jump - 10x further and faster, delayed
+            -- Forward jump
             timer.Simple(0.25, function()
                 if IsValid(owner) then
                     local jumpVel = Vector(0, 0, 200) + owner:GetForward() * 3125
-                    owner:SetVelocity(jumpVel)  -- Set velocity, don't add to existing
+                    owner:SetVelocity(jumpVel)
+                    self.WasInAir = true
                 end
+            end)
+            -- Landing sound for forward jump
+            timer.Simple(0.7, function()
+                if IsValid(self) and IsValid(owner) and owner:OnGround() then
+                    self:PlayXenoSound(self.SoundTbl_Land, 75, math.random(90, 110))
+                end
+                self.JumpLandingHandled = false  -- Clear flag
             end)
         end
     end
 end
 
-function SWEP:DoStandingDodge(direction)
-    local owner = self:GetOwner()
-    if not IsValid(owner) then return end
-    
-    if self.IsAttacking or CurTime() < self.NextAttack then return end
-    
-    self.IsAttacking = true
-    self.AttackEndTime = CurTime() + 0.5
-    self.NextAttack = CurTime() + 0.7
-    
-    local sequence = (direction == "left") and 194 or 195
-    
-    owner:SetNWInt("ForceSequence", sequence)
-    owner:SetNWFloat("ForceSequenceEnd", CurTime() + 0.5)
-    
-    owner:SetSequence(sequence)
-    owner:SetCycle(0)
-    owner:SetPlaybackRate(1.2)
-    
-    if SERVER then
-        timer.Simple(0.25, function()  -- Longer delay
-            if IsValid(owner) then
-                local dodgeVel = owner:GetRight() * (direction == "right" and 1800 or -1800)
-                dodgeVel.z = 150
-                owner:SetVelocity(dodgeVel)
-            end
-        end)
-    end
-end
+
 
 function SWEP:FinishChargeAttack()
     if not self.IsCharging then return end
@@ -1136,153 +1420,257 @@ if CLIENT then
         }
     end
 
-        hook.Add("PlayerFootstep", "CM15_DisableDefaultFootsteps", function(ply, pos, foot, sound, volume, rf)
-        if ply:GetNWBool("IsDirectXeno", false) then
-            return true  -- Prevent default footstep sound
-        end
-    end)
-    
-
-    
-
-
-
-    function SWEP:DrawHUD()
-        local owner = LocalPlayer()
-        if not IsValid(owner) then return end
-        
-        -- Draw alien HUD overlay if available
-        if self.matHud and not self.matHud:IsError() then
-            surface.SetDrawColor(color_white)
-            surface.SetMaterial(self.matHud)
-            surface.DrawTexturedRect(0, 0, ScrW(), ScrH())
-        end
-        
-        -- Helper functions from AVP addon (from your original)
-        local function ScreenPos(x, y)
-            local w = ScrW()
-            local h = ScrH()
-            local pos = {}
-            pos.x = w * 0.5 + w * x * 0.01
-            pos.y = h * 0.5 + w * y * 0.01
-            return pos
-        end
-
-        local function ScreenScale(x, y)
-            local w = ScrW()
-            local h = ScrH()
-            local size = {}
-            size.x = (w * x * 0.01)
-            size.y = (w * y * 0.01)
-            return size
-        end
-
-        local function DrawIcon(mat, x, y, width, height, r, g, b, a, ang)
-            surface.SetDrawColor(Color(r or 255, g or 255, b or 255, a or 255))
-            surface.SetMaterial(mat)
-            local pos = ScreenPos(x, y)
-            local size = ScreenScale(width, height)
-            surface.DrawTexturedRectRotated(pos.x, pos.y, size.x, size.y, ang or 0)
-        end
-
-        local function DrawIcon_UV(mat, x, y, width, height, uv, r, g, b, a)
-            local uv = uv or {0, 0, 1, 1}
-            surface.SetDrawColor(Color(r or 255, g or 255, b or 255, a or 255))
-            surface.SetMaterial(mat)
-            local pos = ScreenPos(x, y)
-            local size = ScreenScale(width, height)
-            surface.DrawTexturedRectUV(pos.x, pos.y, size.x, size.y, uv[1], uv[2], uv[3], uv[4])
-        end
-        
-        -- Health bar (original style from your code)
-        self.HPLerp = Lerp(FrameTime() * 5, self.HPLerp or 0, owner:Health())
-        local maxHP = owner:GetMaxHealth()
-        local hpPer = self.HPLerp / maxHP
-        local hpColor = Color(191, 255, 127)
-        
-        if hpPer <= 0.5 and hpPer > 0.25 then
-            hpColor = Color(255, 145, 0)
-        elseif hpPer <= 0.24 then
-            hpColor = Color(255, 0, 0)
-        end
-        
-        DrawIcon(self.matHP_Base, 0, -22.3, 70, 5, hpColor.r, hpColor.g, hpColor.b, 255)
-        DrawIcon_UV(self.matHP_Full, -22.85, -23.9, 45 * hpPer, 2.2, {0, 0, hpPer, 1}, hpColor.r, hpColor.g, hpColor.b, 255)
-        
-        -- Orientation reticle (original)
-        DrawIcon(self.matOrient, 0, 0, 8, 8, hpColor.r, hpColor.g, hpColor.b, 255, 0)
-        
-        -- Stance indicator (original style with icons)
-        local isCrawling = self.GetCrawlingMode and self:GetCrawlingMode() or self.IsCrawling
-        local iconSize = 64
-        local iconX = 50
-        local iconY = ScrH() - 120
-        
-        -- Draw the appropriate stance icon
-        surface.SetDrawColor(255, 255, 255, 200)
-        if isCrawling then
-            if self.matCrawlIcon and not self.matCrawlIcon:IsError() then
-                surface.SetMaterial(self.matCrawlIcon)
-                surface.DrawTexturedRect(iconX, iconY, iconSize, iconSize)
-            end
-        else
-            if self.matStandIcon and not self.matStandIcon:IsError() then
-                surface.SetMaterial(self.matStandIcon)
-                surface.DrawTexturedRect(iconX, iconY, iconSize, iconSize)
-            end
-        end
-        
-        -- Sprint indicator for standing mode (from original)
-        if not isCrawling and owner:KeyDown(IN_SPEED) then
-            draw.SimpleText("SPRINT", "DermaDefaultBold", iconX + iconSize/2, iconY + iconSize + 10, Color(255, 200, 100), TEXT_ALIGN_CENTER)
-        end
-        
-        -- Attack cooldown
-        if CurTime() < self.NextAttack then
-            local remaining = self.NextAttack - CurTime()
-            draw.SimpleText("Attack Ready: " .. string.format("%.1f", remaining), "DermaDefault", 
-                ScrW()/2, 50, Color(255, 100, 100), TEXT_ALIGN_CENTER)
-        end
-        
-        -- Charge indicator
-        if self.IsCharging then
-            local chargeTime = CurTime() - self.ChargeStartTime
-            local chargeText = "CHARGING: "
-            local chargeColor = Color(255, 255, 100)
+       function SWEP:DrawHUD()
+            local owner = LocalPlayer()
+            if not IsValid(owner) then return end
             
-            if chargeTime >= 2.0 then
-                chargeText = chargeText .. "HEAVY"
-                chargeColor = Color(255, 50, 50)
-            elseif chargeTime >= 1.0 then
-                chargeText = chargeText .. "MEDIUM"
-                chargeColor = Color(255, 150, 50)
+            -- Initialize vision materials if not done
+            if not self.VisionMaterials then
+                self.VisionMaterials = {
+                    [0] = self.matHud,  -- Normal HUD (no vision)
+                    [1] = Material("hud/cpthazama/avp/alien_hud.png", "smooth additive"),
+                }
+            end
+            
+            -- Draw appropriate HUD overlay based on vision mode
+            local hudMat = self.VisionMaterials[self.VisionMode] or self.matHud
+            if hudMat and not hudMat:IsError() then
+                surface.SetDrawColor(color_white)
+                surface.SetMaterial(hudMat)
+                surface.DrawTexturedRect(0, 0, ScrW(), ScrH())
+            end
+            
+            -- Helper functions (keep existing)
+            local function ScreenPos(x, y)
+                local w = ScrW()
+                local h = ScrH()
+                local pos = {}
+                pos.x = w * 0.5 + w * x * 0.01
+                pos.y = h * 0.5 + w * y * 0.01
+                return pos
+            end
+
+            local function ScreenScale(x, y)
+                local w = ScrW()
+                local h = ScrH()
+                local size = {}
+                size.x = (w * x * 0.01)
+                size.y = (w * y * 0.01)
+                return size
+            end
+
+            local function DrawIcon(mat, x, y, width, height, r, g, b, a, ang)
+                surface.SetDrawColor(Color(r or 255, g or 255, b or 255, a or 255))
+                surface.SetMaterial(mat)
+                local pos = ScreenPos(x, y)
+                local size = ScreenScale(width, height)
+                surface.DrawTexturedRectRotated(pos.x, pos.y, size.x, size.y, ang or 0)
+            end
+
+            local function DrawIcon_UV(mat, x, y, width, height, uv, r, g, b, a)
+                local uv = uv or {0, 0, 1, 1}
+                surface.SetDrawColor(Color(r or 255, g or 255, b or 255, a or 255))
+                surface.SetMaterial(mat)
+                local pos = ScreenPos(x, y)
+                local size = ScreenScale(width, height)
+                surface.DrawTexturedRectUV(pos.x, pos.y, size.x, size.y, uv[1], uv[2], uv[3], uv[4])
+            end
+            
+            -- Health bar with vision color modification
+            self.HPLerp = Lerp(FrameTime() * 5, self.HPLerp or 0, owner:Health())
+            local maxHP = owner:GetMaxHealth()
+            local hpPer = self.HPLerp / maxHP
+            local hpColor = Color(191, 255, 127)
+            
+            if hpPer <= 0.5 and hpPer > 0.25 then
+                hpColor = Color(255, 145, 0)
+            elseif hpPer <= 0.24 then
+                hpColor = Color(255, 0, 0)
+            end
+            
+            -- Invert colors when vision active
+            if self.VisionMode > 0 then
+                hpColor = Color(255 - hpColor.r, 255 - hpColor.g, 255 - hpColor.b)
+            end
+            
+            -- Continue with rest of existing HUD code...
+            DrawIcon(self.matHP_Base, 0, -22.3, 70, 5, hpColor.r, hpColor.g, hpColor.b, 255)
+            DrawIcon_UV(self.matHP_Full, -22.85, -23.9, 45 * hpPer, 2.2, {0, 0, hpPer, 1}, hpColor.r, hpColor.g, hpColor.b, 255)
+
+            -- Orientation reticle
+            DrawIcon(self.matOrient, 0, 0, 8, 8, hpColor.r, hpColor.g, hpColor.b, 255, 0)
+            
+            -- Stance indicator
+            local isCrawling = self.GetCrawlingMode and self:GetCrawlingMode() or self.IsCrawling
+            local iconSize = 64
+            local iconX = 50
+            local iconY = ScrH() - 120
+            
+            -- Draw the appropriate stance icon
+            surface.SetDrawColor(255, 255, 255, 200)
+            if isCrawling then
+                if self.matCrawlIcon and not self.matCrawlIcon:IsError() then
+                    surface.SetMaterial(self.matCrawlIcon)
+                    surface.DrawTexturedRect(iconX, iconY, iconSize, iconSize)
+                end
             else
-                chargeText = chargeText .. "LIGHT"
-                chargeColor = Color(255, 255, 100)
+                if self.matStandIcon and not self.matStandIcon:IsError() then
+                    surface.SetMaterial(self.matStandIcon)
+                    surface.DrawTexturedRect(iconX, iconY, iconSize, iconSize)
+                end
+            end
+
+
+
+            
+            -- TAIL ATTACK INDICATOR - FIXED
+            if not isCrawling then
+                local tailIcon = Material("materials/hud/xeno_tail.png", "smooth")
+                if tailIcon and not tailIcon:IsError() then
+                    local tailIconX = iconX + iconSize + 20
+                    local tailIconY = iconY
+                    
+                    -- Get the networked tail attack time directly
+                    local nextTailTime = owner:GetNWFloat("NextTailAttackTime", 0)
+                    local cooldownRemaining = math.max(0, nextTailTime - CurTime())
+                    local cooldownPercent = 1 - (cooldownRemaining / 10)
+                    
+                    -- Dim based on cooldown
+                    local alpha = 50 + (150 * cooldownPercent)
+                    local brightness = 100 + (155 * cooldownPercent)
+                    
+                    surface.SetDrawColor(brightness, brightness, brightness, alpha)
+                    surface.SetMaterial(tailIcon)
+                    surface.DrawTexturedRect(tailIconX, tailIconY, iconSize, iconSize)
+                    
+                    -- Show cooldown text if on cooldown
+                    if cooldownRemaining > 0 then
+                        draw.SimpleText(string.format("%.1f", cooldownRemaining), "DermaDefaultBold", 
+                            tailIconX + iconSize/2, tailIconY + iconSize/2, 
+                            Color(255, 100, 100, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                    else
+                        -- Ready indicator
+                        draw.SimpleText("READY", "DermaDefault", 
+                            tailIconX + iconSize/2, tailIconY + iconSize + 5, 
+                            Color(100, 255, 100, 200), TEXT_ALIGN_CENTER)
+                    end
+                end
             end
             
-            draw.SimpleText(chargeText, "DermaDefaultBold", ScrW()/2, 80, chargeColor, TEXT_ALIGN_CENTER)
             
-            -- Charge progress bar
-            local barW, barH = 200, 10
-            local barX, barY = ScrW()/2 - barW/2, 100
-            local progress = math.min(chargeTime / 1.25, 1.0)  -- Was / 2.5, now faster
+            -- DODGE COOLDOWN INDICATOR
+            local dodgeIcon = Material("materials/hud/xeno_dodge.png", "smooth")
+            if dodgeIcon and not dodgeIcon:IsError() then
+                local dodgeIconX = iconX  -- Same X as stance icon
+                local dodgeIconY = iconY - iconSize - 20  -- Above stance icon
+                
+                -- Get the networked dodge time
+                local nextDodgeTime = owner:GetNWFloat("NextDodgeTime", 0)
+                local dodgeCooldownRemaining = math.max(0, nextDodgeTime - CurTime())
+                local dodgeCooldownPercent = 1 - (dodgeCooldownRemaining / 3)  -- 3 second cooldown
+                
+                -- Dim based on cooldown
+                local alpha = 50 + (150 * dodgeCooldownPercent)  -- Range from 50 (dimmed) to 200 (ready)
+                local brightness = 100 + (155 * dodgeCooldownPercent)  -- Range from 100 to 255
+                
+                surface.SetDrawColor(brightness, brightness, brightness, alpha)
+                surface.SetMaterial(dodgeIcon)
+                surface.DrawTexturedRect(dodgeIconX, dodgeIconY, iconSize, iconSize)
+                
+                -- Show cooldown text if on cooldown
+                if dodgeCooldownRemaining > 0 then
+                    draw.SimpleText(string.format("%.1f", dodgeCooldownRemaining), "DermaDefaultBold", 
+                        dodgeIconX + iconSize/2, dodgeIconY + iconSize/2, 
+                        Color(255, 100, 100, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                else
+                    -- Ready indicator
+                    draw.SimpleText("READY", "DermaDefault", 
+                        dodgeIconX + iconSize/2, dodgeIconY + iconSize + 5, 
+                        Color(100, 255, 100, 200), TEXT_ALIGN_CENTER)
+                end
+            end  
+
+            -- JUMP COOLDOWN INDICATOR
+            local jumpIcon = Material("materials/hud/xeno_jump.png", "smooth")
+            if jumpIcon and not jumpIcon:IsError() then
+                local jumpIconX = iconX + iconSize + 20  -- To the right of stance icon
+                local jumpIconY = iconY - iconSize - 20  -- Above stance icon, next to dodge
+                
+                -- Get the networked jump time
+                local nextJumpTime = owner:GetNWFloat("NextJumpTime", 0)
+                local jumpCooldownRemaining = math.max(0, nextJumpTime - CurTime())
+                local jumpCooldownPercent = 1 - (jumpCooldownRemaining / 3)  -- 3 second cooldown (2 for crawl jumps)
+                
+                -- Dim based on cooldown
+                local alpha = 50 + (150 * jumpCooldownPercent)  -- Range from 50 (dimmed) to 200 (ready)
+                local brightness = 100 + (155 * jumpCooldownPercent)  -- Range from 100 to 255
+                
+                surface.SetDrawColor(brightness, brightness, brightness, alpha)
+                surface.SetMaterial(jumpIcon)
+                surface.DrawTexturedRect(jumpIconX, jumpIconY, iconSize, iconSize)
+                
+                -- Show cooldown text if on cooldown
+                if jumpCooldownRemaining > 0 then
+                    draw.SimpleText(string.format("%.1f", jumpCooldownRemaining), "DermaDefaultBold", 
+                        jumpIconX + iconSize/2, jumpIconY + iconSize/2, 
+                        Color(255, 100, 100, 200), TEXT_ALIGN_CENTER, TEXT_ALIGN_CENTER)
+                else
+                    -- Ready indicator
+                    draw.SimpleText("READY", "DermaDefault", 
+                        jumpIconX + iconSize/2, jumpIconY + iconSize + 5, 
+                        Color(100, 255, 100, 200), TEXT_ALIGN_CENTER)
+                end
+            end
+
+            -- Sprint indicator for standing mode
+            if not isCrawling and owner:KeyDown(IN_SPEED) then
+                draw.SimpleText("SPRINT", "DermaDefaultBold", iconX + iconSize/2, iconY + iconSize + 10, Color(255, 200, 100), TEXT_ALIGN_CENTER)
+            end
             
-            surface.SetDrawColor(0, 0, 0, 150)
-            surface.DrawRect(barX - 2, barY - 2, barW + 4, barH + 4)
+            -- Attack cooldown
+            if CurTime() < self.NextAttack then
+                local remaining = self.NextAttack - CurTime()
+                draw.SimpleText("Attack Ready: " .. string.format("%.1f", remaining), "DermaDefault", 
+                    ScrW()/2, 50, Color(255, 100, 100), TEXT_ALIGN_CENTER)
+            end
             
-            surface.SetDrawColor(chargeColor.r, chargeColor.g, chargeColor.b, 255)
-            surface.DrawRect(barX, barY, barW * progress, barH)
+            -- Charge indicator
+            if self.IsCharging then
+                local chargeTime = CurTime() - self.ChargeStartTime
+                local chargeText = "CHARGING: "
+                local chargeColor = Color(255, 255, 100)
+                
+                if chargeTime >= 0.5 then
+                    chargeText = chargeText .. "HEAVY"
+                    chargeColor = Color(255, 50, 50)
+                elseif chargeTime >= 0.25 then
+                    chargeText = chargeText .. "MEDIUM"
+                    chargeColor = Color(255, 150, 50)
+                else
+                    chargeText = chargeText .. "LIGHT"
+                    chargeColor = Color(255, 255, 100)
+                end
+                
+                draw.SimpleText(chargeText, "DermaDefaultBold", ScrW()/2, 80, chargeColor, TEXT_ALIGN_CENTER)
+                
+                -- Charge progress bar
+                local barW, barH = 200, 10
+                local barX, barY = ScrW()/2 - barW/2, 100
+                local progress = math.min(chargeTime / 0.5, 1.0)  
+                
+                surface.SetDrawColor(0, 0, 0, 150)
+                surface.DrawRect(barX - 2, barY - 2, barW + 4, barH + 4)
+                
+                surface.SetDrawColor(chargeColor.r, chargeColor.g, chargeColor.b, 255)
+                surface.DrawRect(barX, barY, barW * progress, barH)
+            end
+            
+            -- Crosshair
+            local centerX, centerY = ScrW()/2, ScrH()/2
+            surface.SetDrawColor(hpColor.r, hpColor.g, hpColor.b, 200)
+            surface.DrawLine(centerX - 10, centerY, centerX + 10, centerY)
+            surface.DrawLine(centerX, centerY - 10, centerX, centerY + 10)
         end
-        
-        -- Crosshair
-        local centerX, centerY = ScrW()/2, ScrH()/2
-        surface.SetDrawColor(hpColor.r, hpColor.g, hpColor.b, 200)
-        surface.DrawLine(centerX - 10, centerY, centerX + 10, centerY)
-        surface.DrawLine(centerX, centerY - 10, centerX, centerY + 10)
-
-
-    end
 end
 
 function SWEP:Reload()
@@ -1347,13 +1735,33 @@ function SWEP:OnRemove()
             
             owner:SetNWInt("ForceSequence", 0)
             owner:SetNWFloat("ForceSequenceEnd", 0)
+            
+            -- Clean up hooks
+            hook.Remove("EntityTakeDamage", "XenoWarriorPain_" .. self:EntIndex())
+            hook.Remove("PlayerDeath", "XenoWarriorDeath_" .. self:EntIndex())
         end
+        
         if CLIENT then
+            -- Stop vision sound
+            if self.VisionSound then
+                self.VisionSound:Stop()
+                self.VisionSound = nil
+            end
+            
+            -- Remove vision hooks
+            hook.Remove("RenderScreenspaceEffects", "XenoWarriorVision")
+            hook.Remove("PreDrawHalos", "XenoWarriorHalos")
+            hook.Remove("PlayerBindPress", "XenoWarriorVisionBind")
+            
+            -- Existing hook removals...
             hook.Remove("HUDShouldDraw", "CM15_HideDefaultHUD")
             hook.Remove("PlayerFootstep", "CM15_DisableDefaultFootsteps")
         end
+    end
     
-
+    -- Clean up the flashlight hook when weapon is removed
+    if SERVER then
+        hook.Remove("PlayerSwitchFlashlight", "XenoWarriorNoFlashlight")
     end
 end
 
@@ -1361,103 +1769,71 @@ end
 SWEP.LastFootstep = 0
 SWEP.FootstepDelay = 0.4  -- Time between footsteps
 
-function SWEP:Think()
-    local owner = self:GetOwner()
-    if not IsValid(owner) then return end
-    
-    if SERVER then
-        -- Clear forced attack sequences after they expire
-        local forceEnd = owner:GetNWFloat("ForceSequenceEnd", 0)
-        if forceEnd > 0 and CurTime() >= forceEnd then
-            owner:SetNWInt("ForceSequence", 0)
-            owner:SetNWFloat("ForceSequenceEnd", 0)
-        end
-        
-        -- Handle charge attack
-        if self.IsCharging then
-            if not owner:KeyDown(IN_ATTACK2) then
-                local holdTime = CurTime() - self.ChargeStartTime
-                self:UpdateMovementSpeed()
-                
-                if holdTime <= self.QuickTapTime then
-                    self:DoQuickTailStab()
-                else
-                    self:FinishChargeAttack()
-                end
-            else
-                local chargeTime = CurTime() - self.ChargeStartTime
-                local newLevel = 1
-                
-                if chargeTime >= 1.0 then
-                    newLevel = 3
-                elseif chargeTime >= 0.5 then
-                    newLevel = 2
-                else
-                    newLevel = 1
-                end
-                
-                if newLevel ~= self.ChargeLevel then
-                    self.ChargeLevel = newLevel
-                    if newLevel == 2 then
-                        owner:EmitSound("cpthazama/avp/weapons/alien/spit/aln_pre_spit_attack_01.ogg", 50, 120)
-                    elseif newLevel == 3 then
-                        owner:EmitSound("cpthazama/avp/weapons/alien/spit/aln_pre_spit_attack_02.ogg", 60, 100)
-                    end
-                end
-            end
-        end
-        
-        -- Handle attack state cleanup - SHORTENED TIMING
-        if self.IsAttacking and CurTime() >= self.AttackEndTime then
-            self.IsAttacking = false
-            self.AttackEndTime = 0
-            self:UpdateMovementSpeed() -- Restore movement immediately
-        end
-        
-        -- Handle crawl toggle
-        if owner:KeyPressed(IN_DUCK) and CurTime() > self.NextCrawlToggle then
-            self:ToggleCrawlMode()
-        end
-        
-        -- Update movement speeds
-        if not self.IsAttacking and not self.IsCharging then
-            self:UpdateMovementSpeed()
-        end
-        
-        -- Handle crawl sprint buildup
-        if self.IsCrawling and not self.IsAttacking and not self.IsCharging then
-            self:HandleCrawlSprint()
-        end
-        self:HandleFootsteps()
-    end
-end
-
-
--- Add this new function:
 function SWEP:HandleFootsteps()
     local owner = self:GetOwner()
     if not IsValid(owner) then return end
     
-    -- Only play footsteps when moving and on ground
+    if CurTime() < self.FootstepsDisabledUntil then
+        return
+    end
+    
     local velocity = owner:GetVelocity():Length2D()
     local onGround = owner:OnGround()
     
     if velocity > 50 and onGround and CurTime() > self.LastFootstep + self.FootstepDelay then
-        -- Adjust footstep timing based on movement speed
         local speedMultiplier = 1.0
+        local volume = 45
+        
         if self.IsCrawling then
-            speedMultiplier = 1.5  -- Slower footsteps when crawling
+            speedMultiplier = 0.5
+            volume = 30
+            
+            if owner:KeyDown(IN_SPEED) and owner:KeyDown(IN_FORWARD) 
+            and not owner:KeyDown(IN_BACK) and not owner:KeyDown(IN_MOVELEFT) 
+            and not owner:KeyDown(IN_MOVERIGHT) and self.CrawlSpeedBuildup > 0.5 then
+                volume = 85  -- Increased from 70
+                speedMultiplier = 0.2  -- Even faster footsteps
+            end
         elseif owner:KeyDown(IN_SPEED) then
-            speedMultiplier = 0.7  -- Faster footsteps when sprinting
+            speedMultiplier = 0.7
+            volume = 50
+        else
+            speedMultiplier = 0.7
+            volume = 35
         end
         
         self.FootstepDelay = 0.4 * speedMultiplier
         self.LastFootstep = CurTime()
         
-        -- Play footstep sound
-        self:PlayFootstepSound()
+        self:PlayFootstepSoundWithVolume(volume)
     end
 end
+
+-- New function to play footstep with custom volume
+function SWEP:PlayFootstepSoundWithVolume(volume)
+    local owner = self:GetOwner()
+    if not IsValid(owner) then return end
+    
+    -- Trace down to get surface material
+    local tr = util.TraceLine({
+        start = owner:GetPos(),
+        endpos = owner:GetPos() + Vector(0, 0, -50),
+        filter = owner
+    })
+    
+    if tr.Hit then
+        local matType = tr.MatType
+        
+        if matType == MAT_METAL or matType == MAT_VENT or matType == MAT_COMPUTER then
+            self:PlayXenoSound(self.SoundTbl_FootstepsMetal, volume, math.random(90, 110))
+        elseif matType == MAT_CONCRETE or matType == MAT_TILE then
+            self:PlayXenoSound(self.SoundTbl_FootstepsStone, volume, math.random(90, 110))
+        else
+            self:PlayXenoSound(self.SoundTbl_FootstepsDirt, volume, math.random(90, 110))
+        end
+    end
+end
+
 
 -- Server-side movement hook
 if SERVER then
@@ -1488,5 +1864,43 @@ hook.Add("StartCommand", "XenoWarriorChargeBlock", function(ply, cmd)
             buttons = bit.band(buttons, bit.bnot(IN_SPEED))
             cmd:SetButtons(buttons)
         end
+    end
+end)
+
+-- Block flashlight and use F for vision instead
+hook.Add("PlayerBindPress", "XenoWarriorVisionBind", function(ply, bind, pressed)
+    if not pressed then return end
+    
+    local wep = ply:GetActiveWeapon()
+    if IsValid(wep) and wep:GetClass() == "weapon_cm15_xeno_warrior" then
+        if bind == "impulse 100" then -- This is the flashlight bind (F key)
+            if CLIENT then
+                wep.VisionMode = (wep.VisionMode + 1) % 2  -- Changed from % 4 to % 2 (just 0 or 1)
+                
+                if wep.VisionMode > 0 then
+                    if not wep.VisionSound then
+                        wep.VisionSound = CreateSound(ply, "cpthazama/avp/weapons/alien/alien_vision_loop.wav")
+                        wep.VisionSound:SetSoundLevel(0)
+                        wep.VisionSound:Play()
+                    end
+                    ply:EmitSound("cpthazama/avp/weapons/alien/alien_vision_on.ogg", 65, 100)
+                else
+                    if wep.VisionSound then
+                        wep.VisionSound:Stop()
+                        wep.VisionSound = nil
+                    end
+                    ply:EmitSound("cpthazama/avp/weapons/alien/alien_vision_off.ogg", 65, 100)
+                end
+            end
+            return true -- Block the flashlight
+        end
+    end
+end)
+
+-- Prevent flashlight from turning on server-side (STEP 3)
+hook.Add("PlayerSwitchFlashlight", "XenoWarriorNoFlashlight", function(ply, enabled)
+    local wep = ply:GetActiveWeapon()
+    if IsValid(wep) and wep:GetClass() == "weapon_cm15_xeno_warrior" then
+        return false -- Prevent flashlight
     end
 end)
